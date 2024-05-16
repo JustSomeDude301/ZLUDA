@@ -8195,9 +8195,9 @@ impl<T: ArgParamsEx> ast::Arg3<T> {
 
 fn texture_geometry_to_vec_length(geometry: ast::TextureGeometry) -> u8 {
     match geometry {
-        ast::TextureGeometry::OneD => 1u8,
-        ast::TextureGeometry::TwoD | ast::TextureGeometry::Array1D => 2,
-        ast::TextureGeometry::ThreeD | ast::TextureGeometry::Array2D => 4,
+        ast::TextureGeometry::OneD | ast::TextureGeometry::Array1D => 1u8,
+        ast::TextureGeometry::TwoD | ast::TextureGeometry::Array2D => 2,
+        ast::TextureGeometry::ThreeD => 4,
     }
 }
 
@@ -8271,6 +8271,14 @@ impl<T: ArgParamsEx> ast::Arg4Sust<T> {
         visitor: &mut V,
         details: &ast::SurfaceDetails,
     ) -> Result<ast::Arg4Sust<U>, TranslateError> {
+        let (type_, space) = if details.direct {
+            (ast::Type::Surfref, ast::StateSpace::Global)
+        } else {
+            (
+                ast::Type::Scalar(ast::ScalarType::B64),
+                ast::StateSpace::Reg,
+            )
+        };
         let image = visitor.operand(
             ArgumentDescriptor {
                 op: self.image,
@@ -8278,8 +8286,8 @@ impl<T: ArgParamsEx> ast::Arg4Sust<T> {
                 is_memory_access: false,
                 non_default_implicit_conversion: None,
             },
-            &ast::Type::Surfref,
-            ast::StateSpace::Global,
+            &type_,
+            space,
         )?;
         let layer = self
             .layer
@@ -9231,9 +9239,7 @@ fn should_convert_relaxed_src_wrapper(
     }
     match should_convert_relaxed_src(operand_type, instruction_type) {
         conv @ Some(_) => Ok(conv),
-        None => {
-            Err(TranslateError::mismatched_type())
-        }
+        None => Err(TranslateError::mismatched_type()),
     }
 }
 
