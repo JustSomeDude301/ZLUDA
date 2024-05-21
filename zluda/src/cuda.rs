@@ -81,6 +81,7 @@ cuda_function_declarations!(
         cuModuleLoad,
         cuModuleLoadData,
         cuModuleLoadDataEx,
+        cuModuleLoadFatBinary,
         cuModuleUnload,
         cuModuleGetFunction,
         cuModuleGetGlobal_v2,
@@ -470,7 +471,7 @@ mod definitions {
         context::set_current(ctx)
     }
 
-    pub(crate) unsafe fn cuCtxGetCurrent(pctx: *mut *mut context::Context) -> CUresult {
+    pub(crate) unsafe fn cuCtxGetCurrent(pctx: *mut *mut context::Context) -> Result<(), CUresult> {
         context::get_current(pctx)
     }
 
@@ -578,6 +579,14 @@ mod definitions {
         options: *mut CUjit_option,
         optionValues: *mut *mut ::std::os::raw::c_void,
     ) -> Result<(), CUresult> {
+        module::load_data(module, image)
+    }
+
+    pub(crate) unsafe fn cuModuleLoadFatBinary(
+        module: *mut *mut module::Module,
+        image: *const ::std::os::raw::c_void,
+    ) -> Result<(), CUresult> {
+        // load_data checks header and detects content
         module::load_data(module, image)
     }
 
@@ -1662,9 +1671,7 @@ mod definitions {
         array::mipmapped_create(pHandle, pMipmappedArrayDesc, numMipmapLevels)
     }
 
-    pub(crate) unsafe fn cuMipmappedArrayDestroy(
-        hMipmappedArray: CUmipmappedArray,
-    ) -> hipError_t {
+    pub(crate) unsafe fn cuMipmappedArrayDestroy(hMipmappedArray: CUmipmappedArray) -> hipError_t {
         array::mipmapped_destroy(hMipmappedArray)
     }
 

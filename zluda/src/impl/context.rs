@@ -18,6 +18,14 @@ thread_local! {
     pub(crate) static CONTEXT_STACK: RefCell<Vec<(*mut Context, hipDevice_t)>> = RefCell::new(Vec::new());
 }
 
+fn with_context_stack<T>(
+    f: impl FnOnce(&RefCell<Vec<(*mut Context, hipDevice_t)>>) -> T,
+) -> Result<T, CUresult> {
+    CONTEXT_STACK
+        .try_with(|stack| f(stack))
+        .map_err(|_| CUresult::CUDA_ERROR_UNKNOWN)
+}
+
 pub(crate) type Context = LiveCheck<ContextData>;
 
 impl ZludaObject for ContextData {
@@ -155,7 +163,7 @@ pub(crate) unsafe fn destroy(ctx: *mut Context) -> Result<(), CUresult> {
     if let ContextVariant::Primary { .. } = ctx_ref.variant {
         return Err(CUresult::CUDA_ERROR_INVALID_CONTEXT);
     }
-    CONTEXT_STACK.with(|stack| {
+    with_context_stack(|stack| {
         let mut stack = stack.borrow_mut();
         let should_pop = match stack.last() {
             Some((active_ctx, _)) => *active_ctx == ctx,
@@ -165,7 +173,7 @@ pub(crate) unsafe fn destroy(ctx: *mut Context) -> Result<(), CUresult> {
             pop_context_stack_impl(&mut stack)?;
         }
         Ok(())
-    })?;
+    })??;
     LiveCheck::drop_box_with_result(ctx, false)
 }
 
@@ -197,13 +205,13 @@ pub(crate) unsafe fn set_current(ctx: *mut Context) -> Result<(), CUresult> {
     Ok(())
 }
 
-pub(crate) fn get_current(pctx: *mut *mut Context) -> CUresult {
+pub(crate) fn get_current(pctx: *mut *mut Context) -> Result<(), CUresult> {
     if pctx == ptr::null_mut() {
-        return CUresult::CUDA_ERROR_INVALID_VALUE;
+        return Err(CUresult::CUDA_ERROR_INVALID_VALUE);
     }
-    let ctx = get_current_from_stack().unwrap_or(ptr::null_mut());
+    let ctx = get_current_from_stack()?.unwrap_or(ptr::null_mut());
     unsafe { *pctx = ctx };
-    CUresult::CUDA_SUCCESS
+    Ok(())
 }
 
 pub fn get_device(dev: *mut hipDevice_t) -> Result<(), CUresult> {
@@ -255,24 +263,24 @@ pub(crate) unsafe fn synchronize() -> Result<(), CUresult> {
 }
 
 pub(crate) fn with_current<T>(f: impl FnOnce(&ContextData) -> T) -> Result<T, CUresult> {
-    CONTEXT_STACK.with(|stack| {
+    with_context_stack(|stack| {
         stack
             .borrow()
             .last()
             .ok_or(CUresult::CUDA_ERROR_INVALID_CONTEXT)
             .and_then(|(ctx, _)| Ok(f(unsafe { LiveCheck::as_result(*ctx)? })))
-    })
+    })?
 }
 
-fn get_current_from_stack() -> Option<*mut Context> {
-    CONTEXT_STACK.with(|stack| stack.borrow().last().copied().map(|(ctx, _)| ctx))
+fn get_current_from_stack() -> Result<Option<*mut Context>, CUresult> {
+    with_context_stack(|stack| stack.borrow().last().copied().map(|(ctx, _)| ctx))
 }
 
 fn pop_context_stack() -> Result<Option<*mut Context>, CUresult> {
-    CONTEXT_STACK.with(|stack| {
+    with_context_stack(|stack| {
         let mut stack = stack.borrow_mut();
         pop_context_stack_impl(&mut stack)
-    })
+    })?
 }
 
 fn pop_context_stack_impl(
@@ -287,7 +295,7 @@ fn pop_context_stack_impl(
 
 unsafe fn push_context_stack(ctx: *mut Context) -> Result<(), CUresult> {
     let device = { LiveCheck::as_result(ctx)?.device };
-    CONTEXT_STACK.with(|stack| stack.borrow_mut().push((ctx, device)));
+    with_context_stack(|stack| stack.borrow_mut().push((ctx, device)))?;
     hip_call_cuda!(hipSetDevice(device));
     Ok(())
 }

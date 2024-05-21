@@ -427,8 +427,8 @@ pub(crate) fn cuModuleLoadData_Post(
     if result != CUresult::CUDA_SUCCESS {
         return;
     }
-    if let Some(module_content) =
-        fn_logger.log_unwrap(unsafe { CUmoduleContent::from_ptr(raw_image.cast()) }.map_err(LogEntry::from))
+    if let Some(module_content) = fn_logger
+        .log_unwrap(unsafe { CUmoduleContent::from_ptr(raw_image.cast()) }.map_err(LogEntry::from))
     {
         state
             .cuda_state
@@ -585,15 +585,22 @@ pub(crate) fn cuModuleLoadFatBinary_Pre(
 
 #[allow(non_snake_case)]
 pub(crate) fn cuModuleLoadFatBinary_Post(
-    _module: *mut CUmodule,
-    _fatCubin: *const ::std::os::raw::c_void,
-    _fn_logger: &mut log::FunctionLogger,
-    _state: &mut GlobalDelayedState,
+    module: *mut CUmodule,
+    fat_cubin: *const ::std::os::raw::c_void,
+    fn_logger: &mut log::FunctionLogger,
+    state: &mut GlobalDelayedState,
     _pre_result: (),
     result: CUresult,
 ) {
-    if result == CUresult::CUDA_SUCCESS {
-        panic!()
+    if result != CUresult::CUDA_SUCCESS {
+        return;
+    }
+    if let Some(module_content) = fn_logger
+        .log_unwrap(unsafe { CUmoduleContent::from_ptr(fat_cubin.cast()) }.map_err(LogEntry::from))
+    {
+        state
+            .cuda_state
+            .record_module(fn_logger, Some(unsafe { *module }), module_content);
     }
 }
 
@@ -1070,8 +1077,8 @@ pub(crate) fn cuLibraryLoadData_Post(
     ) {
         return;
     }
-    if let Some(module_content) =
-        fn_logger.log_unwrap(unsafe { CUmoduleContent::from_ptr(code.cast()) }.map_err(LogEntry::from))
+    if let Some(module_content) = fn_logger
+        .log_unwrap(unsafe { CUmoduleContent::from_ptr(code.cast()) }.map_err(LogEntry::from))
     {
         state
             .cuda_state
